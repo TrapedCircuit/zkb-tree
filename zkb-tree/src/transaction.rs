@@ -1,6 +1,6 @@
 use core::mem;
 use smallvec::SmallVec;
-use std::{
+use core::{
     borrow::Borrow,
     marker::PhantomData,
     ops::{Bound, RangeBounds, RangeFull},
@@ -874,7 +874,7 @@ mod test {
     use crate::{db::MemoryDb, transaction::Transaction, Store};
     use alloc::collections::btree_map::BTreeMap;
     use proptest::prelude::*;
-    use std::ops::RangeBounds;
+    use core::ops::RangeBounds;
 
     #[derive(Clone, Debug)]
     enum Op {
