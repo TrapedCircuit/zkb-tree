@@ -5,12 +5,12 @@ use arrayvec::ArrayVec;
 use crate::hash::{PortableHash, PortableHasher};
 
 use crate::errors::BTreeError;
-use crate::node::{LeafNode, Node, NodeRef, DEFAULT_MAX_CHILDREN};
+use crate::node::{DEFAULT_MAX_CHILDREN, LeafNode, Node, NodeRef};
 use crate::{
     db::DatabaseGet,
     node::{
-        InnerNodeSnapshot, InnerOuter, InnerOuterSnapshotOwned, InnerOuterSnapshotRef, NodeHash,
-        EMPTY_TREE_ROOT_HASH,
+        EMPTY_TREE_ROOT_HASH, InnerNodeSnapshot, InnerOuter, InnerOuterSnapshotOwned,
+        InnerOuterSnapshotRef, NodeHash,
     },
     store::{Idx, Store},
 };

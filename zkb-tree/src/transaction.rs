@@ -1,10 +1,10 @@
 use core::mem;
-use smallvec::SmallVec;
 use core::{
     borrow::Borrow,
     marker::PhantomData,
     ops::{Bound, RangeBounds, RangeFull},
 };
+use smallvec::SmallVec;
 
 use crate::hash::{PortableHash, PortableHasher};
 use arrayvec::ArrayVec;
@@ -13,9 +13,9 @@ use crate::{
     db::{DatabaseGet, DatabaseSet},
     errors::BTreeError,
     node::{
-        handle_inner_split, merge_or_balance, InnerNode, InnerNodeSnapshot, InnerOuter,
-        InsertResult, LeafNode, Node, NodeArena, NodeHash, NodeRef, DEFAULT_MAX_CHILDREN,
-        EMPTY_TREE_ROOT_HASH,
+        DEFAULT_MAX_CHILDREN, EMPTY_TREE_ROOT_HASH, InnerNode, InnerNodeSnapshot, InnerOuter,
+        InsertResult, LeafNode, Node, NodeArena, NodeHash, NodeRef, handle_inner_split,
+        merge_or_balance,
     },
     snapshot::{Snapshot, SnapshotBuilder, VerifiedSnapshot},
     store::{Idx, Store},
@@ -26,6 +26,16 @@ pub struct Transaction<S: Store> {
     pub data_store: S,
     pub(crate) arena: NodeArena<S::Key, S::Value>,
     current_root: Option<NodeRef>,
+}
+
+impl<S: Store + Clone> Clone for Transaction<S> {
+    fn clone(&self) -> Self {
+        Self {
+            data_store: self.data_store.clone(),
+            arena: self.arena.clone(),
+            current_root: self.current_root,
+        }
+    }
 }
 
 impl<S: Store> Transaction<S> {
@@ -776,7 +786,7 @@ impl<'s, S: Store, K: Borrow<S::Key>, R: RangeBounds<K>> Iterator for Range<'s, 
             match (self.range.start_bound(), self.range.end_bound()) {
                 (Bound::Included(s), Bound::Included(e)) if s.borrow() > e.borrow() => return None,
                 (Bound::Excluded(s), Bound::Excluded(e)) if s.borrow() >= e.borrow() => {
-                    return None
+                    return None;
                 }
                 _ => {}
             }
@@ -871,10 +881,10 @@ impl<'s, S: Store, K: Borrow<S::Key>, R: RangeBounds<K>> Iterator for Range<'s, 
 
 #[cfg(test)]
 mod test {
-    use crate::{db::MemoryDb, transaction::Transaction, Store};
+    use crate::{Store, db::MemoryDb, transaction::Transaction};
     use alloc::collections::btree_map::BTreeMap;
-    use proptest::prelude::*;
     use core::ops::RangeBounds;
+    use proptest::prelude::*;
 
     #[derive(Clone, Debug)]
     enum Op {

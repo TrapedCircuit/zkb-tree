@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use sha2::Sha256;
 use zkb_tree::{
-    db::MemoryDb, snapshot::Snapshot, DigestHasher, NodeHash, Transaction, VerifiedSnapshot,
+    DigestHasher, NodeHash, Transaction, VerifiedSnapshot, db::MemoryDb, snapshot::Snapshot,
 };
 
 fn build_tree(size: u32) -> (NodeHash, Rc<MemoryDb<u32, u32>>) {

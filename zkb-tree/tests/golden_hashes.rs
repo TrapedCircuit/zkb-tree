@@ -1,5 +1,5 @@
 use sha2::Sha256;
-use zkb_tree::{db::MemoryDb, DigestHasher, NodeHash, Transaction};
+use zkb_tree::{DigestHasher, NodeHash, Transaction, db::MemoryDb};
 
 fn compute_root(ops: &[(bool, u32, u32)]) -> NodeHash {
     let mut txn =

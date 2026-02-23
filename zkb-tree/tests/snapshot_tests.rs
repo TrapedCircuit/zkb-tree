@@ -1,9 +1,7 @@
 use std::rc::Rc;
 
 use sha2::Sha256;
-use zkb_tree::{
-    db::MemoryDb, DigestHasher, NodeHash, Snapshot, Transaction, VerifiedSnapshot,
-};
+use zkb_tree::{DigestHasher, NodeHash, Snapshot, Transaction, VerifiedSnapshot, db::MemoryDb};
 
 fn build_and_snapshot(
     size: u32,

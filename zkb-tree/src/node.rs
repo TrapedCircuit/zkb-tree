@@ -51,6 +51,7 @@ pub type InnerNodeSnapshot<K> = Node<K, Idx>;
 // NodeArena
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct NodeArena<K, V> {
     pub(crate) inner_nodes: Slab<InnerNode<K>>,
     pub(crate) leaf_nodes: Slab<LeafNode<K, V>>,
