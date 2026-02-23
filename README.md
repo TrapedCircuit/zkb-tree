@@ -124,5 +124,3 @@ The crate has multiple layers of testing:
 
 - `std` (default) — standard library support
 - `serde` — serialization for `Node`, `Snapshot`, `InnerOuter` via serde
-# zkb-tree
-# zkb-tree
