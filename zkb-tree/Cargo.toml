@@ -1,0 +1,30 @@
+[package]
+name = "zkb-tree"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["std"]
+std = []
+serde = ["dep:serde", "arrayvec/serde"]
+
+[dependencies]
+arrayvec = { version = "0.7", default-features = false }
+serde = { version = "1", default-features = false, features = [
+  "derive",
+  "alloc",
+], optional = true }
+digest = "0.10"
+slab = { version = "0.4", default-features = false }
+smallvec = "1"
+
+[dev-dependencies]
+btree-test-utils = { path = "./btree-test-utils" }
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest-derive = { version = "0.5" }
+proptest = { version = "1" }
+sha2 = "0.10"
+
+[[bench]]
+name = "btree_bench"
+harness = false

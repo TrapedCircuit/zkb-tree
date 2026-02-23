@@ -1,0 +1,21 @@
+[package]
+name = "fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+zkb-tree = { path = "../zkb-tree" }
+btree-test-utils = { path = "../zkb-tree/btree-test-utils" }
+
+[[bin]]
+name = "btree_ops"
+path = "fuzz_targets/btree_ops.rs"
+test = false
+doc = false
+bench = false

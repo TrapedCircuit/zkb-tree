@@ -1,0 +1,16 @@
+[workspace]
+
+resolver = "2"
+
+members = [
+	"zkb-tree",
+	"zkb-tree/btree-test-utils",
+	"fuzz",
+]
+
+exclude = [ "fuzz-afl" ]
+
+[profile.test]
+opt-level = 3
+debug-assertions = true
+overflow-checks = true
