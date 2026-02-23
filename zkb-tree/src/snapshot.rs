@@ -21,72 +21,57 @@ use crate::{
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VerifiedSnapshot<S: Store> {
-    snapshot: S,
+pub struct VerifiedSnapshot<K, V> {
+    snapshot: Snapshot<K, V>,
     node_hashes: Box<[NodeHash]>,
     leaf_hashes: Box<[NodeHash]>,
 }
 
-impl<S: Store + Default> Default for VerifiedSnapshot<S> {
+impl<K: Clone + Ord + PortableHash, V: Clone + PortableHash> VerifiedSnapshot<K, V> {
     #[inline]
-    fn default() -> Self {
+    pub fn empty() -> Self {
         Self {
-            snapshot: S::default(),
+            snapshot: Snapshot::empty(),
             node_hashes: Box::new([]),
             leaf_hashes: Box::new([]),
         }
     }
-}
-
-impl<S: Store + AsRef<Snapshot<S::Key, S::Value>>> VerifiedSnapshot<S> {
-    #[inline]
-    pub fn empty() -> Self
-    where
-        S: Default,
-    {
-        Self::default()
-    }
 
     #[inline]
     pub fn verify_snapshot(
-        snapshot: S,
+        snapshot: Snapshot<K, V>,
         hasher: &mut impl PortableHasher<32>,
     ) -> Result<Self, &'static str> {
-        let snap = snapshot.as_ref();
-        snap.root_node_ref()?;
+        snapshot.root_node_ref()?;
 
-        let mut node_hashes = Vec::with_capacity(snap.branches.len());
-        let mut leaf_hashes = Vec::with_capacity(snap.leaves.len());
+        let mut node_hashes = Vec::with_capacity(snapshot.branches.len());
+        let mut leaf_hashes = Vec::with_capacity(snapshot.leaves.len());
 
-        for leaf in snap.leaves.iter() {
+        for leaf in snapshot.leaves.iter() {
             leaf.portable_hash(hasher);
             leaf_hashes.push(hasher.finalize_reset());
         }
 
-        let leaf_offset = snap.branches.len();
-        let unvisited_offset = leaf_offset + snap.leaves.len();
-
-        for node in snap.branches.iter() {
-            let hash_of_child = |child: usize| -> Result<&NodeHash, &'static str> {
-                if child < leaf_offset {
-                    node_hashes
-                        .get(child)
-                        .ok_or("snapshot: child node index must be less than parent")
-                } else if child < unvisited_offset {
-                    leaf_hashes
-                        .get(child - leaf_offset)
-                        .ok_or("snapshot: child leaf does not exist")
-                } else {
-                    snap.unvisited_nodes
-                        .get(child - unvisited_offset)
-                        .ok_or("snapshot: child unvisited node does not exist")
+        for node in snapshot.branches.iter() {
+            let hash_of_child = |child: Idx| -> Result<&NodeHash, &'static str> {
+                match snapshot.classify(child)? {
+                    SnapshotRegion::Branch(i) => node_hashes
+                        .get(i)
+                        .ok_or("snapshot: child node index must be less than parent"),
+                    SnapshotRegion::Leaf(i) => leaf_hashes
+                        .get(i)
+                        .ok_or("snapshot: child leaf does not exist"),
+                    SnapshotRegion::Unvisited(i) => snapshot
+                        .unvisited_nodes
+                        .get(i)
+                        .ok_or("snapshot: child unvisited node does not exist"),
                 }
             };
 
             let child_hashes: ArrayVec<NodeHash, DEFAULT_MAX_CHILDREN> = node
                 .children
                 .iter()
-                .map(|&c| hash_of_child(c as usize).copied())
+                .map(|&c| hash_of_child(c).copied())
                 .collect::<Result<_, _>>()?;
 
             node.portable_hash_iter(hasher, &child_hashes);
@@ -106,22 +91,21 @@ impl<S: Store + AsRef<Snapshot<S::Key, S::Value>>> VerifiedSnapshot<S> {
             .last()
             .copied()
             .or_else(|| self.leaf_hashes.first().copied())
-            .or_else(|| self.snapshot.as_ref().unvisited_nodes.first().copied())
+            .or_else(|| self.snapshot.unvisited_nodes.first().copied())
             .unwrap_or(EMPTY_TREE_ROOT_HASH)
     }
 
     #[inline]
     pub(crate) fn root_node_ref(&self) -> Option<NodeRef> {
         self.snapshot
-            .as_ref()
             .root_node_ref()
             .expect("ill-formed verified snapshot")
     }
 }
 
-impl<S: Store + AsRef<Snapshot<S::Key, S::Value>>> Store for VerifiedSnapshot<S> {
-    type Key = S::Key;
-    type Value = S::Value;
+impl<K: Clone + Ord + PortableHash, V: Clone + PortableHash> Store for VerifiedSnapshot<K, V> {
+    type Key = K;
+    type Value = V;
 
     #[inline]
     fn get_store_root_idx(&self) -> Option<Idx> {
@@ -139,40 +123,21 @@ impl<S: Store + AsRef<Snapshot<S::Key, S::Value>>> Store for VerifiedSnapshot<S>
         _: &mut impl PortableHasher<32>,
         node: Idx,
     ) -> Result<NodeHash, BTreeError> {
-        let snap = self.snapshot.as_ref();
-        let idx = node as usize;
-        let leaf_offset = snap.branches.len();
-        let unvisited_offset = leaf_offset + snap.leaves.len();
-
-        if let Some(h) = self.node_hashes.get(idx) {
-            Ok(*h)
-        } else if let Some(h) = self.leaf_hashes.get(idx - leaf_offset) {
-            Ok(*h)
-        } else if let Some(h) = snap.unvisited_nodes.get(idx - unvisited_offset) {
-            Ok(*h)
-        } else {
-            Err("node does not exist".into())
+        match self.snapshot.classify(node).map_err(BTreeError::from)? {
+            SnapshotRegion::Branch(i) => Ok(self.node_hashes[i]),
+            SnapshotRegion::Leaf(i) => Ok(self.leaf_hashes[i]),
+            SnapshotRegion::Unvisited(i) => Ok(self.snapshot.unvisited_nodes[i]),
         }
     }
 
     #[inline]
-    fn get(
-        &self,
-        idx: Idx,
-    ) -> Result<InnerOuterSnapshotRef<'_, Self::Key, Self::Value>, BTreeError> {
-        let snap = self.snapshot.as_ref();
-        let i = idx as usize;
-        let leaf_offset = snap.branches.len();
-        let unvisited_offset = leaf_offset + snap.leaves.len();
-
-        if let Some(n) = snap.branches.get(i) {
-            Ok(InnerOuterSnapshotRef::Inner(n))
-        } else if let Some(l) = snap.leaves.get(i - leaf_offset) {
-            Ok(InnerOuterSnapshotRef::Outer(l))
-        } else if snap.unvisited_nodes.get(i - unvisited_offset).is_some() {
-            Err("node is unvisited".into())
-        } else {
-            Err("node does not exist".into())
+    fn get(&self, idx: Idx) -> Result<InnerOuterSnapshotRef<'_, K, V>, BTreeError> {
+        match self.snapshot.classify(idx).map_err(BTreeError::from)? {
+            SnapshotRegion::Branch(i) => {
+                Ok(InnerOuterSnapshotRef::Inner(&self.snapshot.branches[i]))
+            }
+            SnapshotRegion::Leaf(i) => Ok(InnerOuterSnapshotRef::Outer(&self.snapshot.leaves[i])),
+            SnapshotRegion::Unvisited(_) => Err("node is unvisited".into()),
         }
     }
 }
@@ -193,6 +158,12 @@ impl<K, V> Default for Snapshot<K, V> {
     fn default() -> Self {
         Self::empty()
     }
+}
+
+enum SnapshotRegion {
+    Branch(usize),
+    Leaf(usize),
+    Unvisited(usize),
 }
 
 impl<K, V> Snapshot<K, V> {
@@ -217,46 +188,70 @@ impl<K, V> Snapshot<K, V> {
             _ => Err("ill-formed snapshot"),
         }
     }
-}
 
-impl<K, V> AsRef<Snapshot<K, V>> for Snapshot<K, V> {
-    fn as_ref(&self) -> &Snapshot<K, V> {
-        self
-    }
-}
-
-impl<K: Clone + Ord + PortableHash, V: Clone + PortableHash> Store for Snapshot<K, V> {
-    type Key = K;
-    type Value = V;
-
-    fn get_store_root_idx(&self) -> Option<Idx> {
-        unimplemented!("Use VerifiedSnapshot to get the root index of a snapshot")
-    }
-
-    fn get_store_root_hash(&self) -> NodeHash {
-        unimplemented!("Use VerifiedSnapshot to get the root hash of a snapshot")
-    }
-
-    fn calc_subtree_hash(
-        &self,
-        _hasher: &mut impl PortableHasher<32>,
-        _hash_idx: Idx,
-    ) -> Result<NodeHash, BTreeError> {
-        unimplemented!("Use VerifiedSnapshot to calculate the hash of a snapshot")
-    }
-
-    fn get(
-        &self,
-        hash_idx: Idx,
-    ) -> Result<InnerOuterSnapshotRef<'_, Self::Key, Self::Value>, BTreeError> {
-        let idx = hash_idx as usize;
-        if let Some(n) = self.branches.get(idx) {
-            Ok(InnerOuterSnapshotRef::Inner(n))
-        } else if let Some(l) = self.leaves.get(idx - self.branches.len()) {
-            Ok(InnerOuterSnapshotRef::Outer(l))
+    fn classify(&self, idx: Idx) -> Result<SnapshotRegion, &'static str> {
+        let i = idx as usize;
+        let leaf_offset = self.branches.len();
+        let unvisited_offset = leaf_offset + self.leaves.len();
+        if i < leaf_offset {
+            Ok(SnapshotRegion::Branch(i))
+        } else if i - leaf_offset < self.leaves.len() {
+            Ok(SnapshotRegion::Leaf(i - leaf_offset))
+        } else if i - unvisited_offset < self.unvisited_nodes.len() {
+            Ok(SnapshotRegion::Unvisited(i - unvisited_offset))
         } else {
-            Err("node does not exist".into())
+            Err("node does not exist")
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AppendOnlyVec — enforces push-only access at the type level
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct AppendOnlyVec<T>(Vec<T>);
+
+impl<T> AppendOnlyVec<T> {
+    fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    fn push(&mut self, val: T) {
+        self.0.push(val);
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    fn get(&self, idx: usize) -> Option<&T> {
+        self.0.get(idx)
+    }
+
+    fn first(&self) -> Option<&T> {
+        self.0.first()
+    }
+
+    fn as_slice(&self) -> &[T] {
+        &self.0
+    }
+}
+
+impl<T> core::ops::Index<usize> for AppendOnlyVec<T> {
+    type Output = T;
+    fn index(&self, idx: usize) -> &T {
+        &self.0[idx]
+    }
+}
+
+impl<T> core::ops::IndexMut<usize> for AppendOnlyVec<T> {
+    fn index_mut(&mut self, idx: usize) -> &mut T {
+        &mut self.0[idx]
     }
 }
 
@@ -272,24 +267,19 @@ pub struct SnapshotBuilder<K: Ord + Clone + PortableHash, V: Clone + PortableHas
 
 #[derive(Clone)]
 struct SnapshotBuilderInner<K, V> {
-    nodes: Vec<(NodeHash, Option<InnerOuterSnapshotOwned<K, V>>)>,
+    nodes: AppendOnlyVec<(NodeHash, Option<InnerOuterSnapshotOwned<K, V>>)>,
 }
 
 impl<K: Ord + Clone + PortableHash, V: Clone + PortableHash, Db> SnapshotBuilder<K, V, Db> {
     #[inline]
     pub fn new(root: NodeHash, db: Db) -> Self {
-        if root == EMPTY_TREE_ROOT_HASH {
-            Self {
-                db,
-                inner: RefCell::new(SnapshotBuilderInner { nodes: Vec::new() }),
-            }
-        } else {
-            Self {
-                db,
-                inner: RefCell::new(SnapshotBuilderInner {
-                    nodes: vec![(root, None)],
-                }),
-            }
+        let mut nodes = AppendOnlyVec::new();
+        if root != EMPTY_TREE_ROOT_HASH {
+            nodes.push((root, None));
+        }
+        Self {
+            db,
+            inner: RefCell::new(SnapshotBuilderInner { nodes }),
         }
     }
 
@@ -308,7 +298,7 @@ impl<K: Ord + Clone + PortableHash, V: Clone + PortableHash, Db> SnapshotBuilder
             return Snapshot::empty();
         }
 
-        let mut state = SnapshotBuilderFold::new(&inner.nodes);
+        let mut state = SnapshotBuilderFold::new(inner.nodes.as_slice());
         let root_idx = state.fold(0);
 
         debug_assert!(state.branches.is_empty() || root_idx == state.branches.len() as Idx - 1);
@@ -385,8 +375,8 @@ impl<K: Ord + Clone + PortableHash, V: Clone + PortableHash, Db: DatabaseGet<K, 
 
         let node_or_leaf = inner.nodes[idx].1.as_ref().unwrap();
 
-        // Safety: The SnapshotBuilder's inner Vec only grows (push, never remove/reorder).
-        // The SnapshotBuilder outlives the returned reference. So the pointer remains valid.
+        // Safety: AppendOnlyVec guarantees elements are never removed or relocated
+        // (only push is exposed). The SnapshotBuilder outlives the returned reference.
         unsafe {
             match node_or_leaf {
                 InnerOuter::Inner(node) => Ok(InnerOuterSnapshotRef::Inner(&*(node as *const _))),

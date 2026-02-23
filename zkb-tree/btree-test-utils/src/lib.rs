@@ -207,7 +207,7 @@ pub fn run_against_snapshot(
     // Does the contract's expected old root hash match the submitted snapshot?
 
     let verified_snapshot =
-        VerifiedSnapshot::verify_snapshot(&snapshot, &mut DigestHasher::<Sha256>::default())
+        VerifiedSnapshot::verify_snapshot(snapshot, &mut DigestHasher::<Sha256>::default())
             .unwrap();
 
     assert_eq!(old_root_hash, verified_snapshot.root_hash());

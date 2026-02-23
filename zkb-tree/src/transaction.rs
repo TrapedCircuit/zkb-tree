@@ -603,9 +603,11 @@ impl<K: Ord + Clone + PortableHash, V: Clone + PortableHash, Db: DatabaseGet<K, 
     }
 }
 
-impl<'s, S: Store + AsRef<Snapshot<S::Key, S::Value>>> Transaction<&'s VerifiedSnapshot<S>> {
+impl<'s, K: Clone + Ord + PortableHash, V: Clone + PortableHash>
+    Transaction<&'s VerifiedSnapshot<K, V>>
+{
     #[inline]
-    pub fn from_verified_snapshot_ref(snapshot: &'s VerifiedSnapshot<S>) -> Self {
+    pub fn from_verified_snapshot_ref(snapshot: &'s VerifiedSnapshot<K, V>) -> Self {
         Transaction {
             current_root: snapshot.root_node_ref(),
             arena: NodeArena::new(),
@@ -614,9 +616,9 @@ impl<'s, S: Store + AsRef<Snapshot<S::Key, S::Value>>> Transaction<&'s VerifiedS
     }
 }
 
-impl<S: Store + AsRef<Snapshot<S::Key, S::Value>>> Transaction<VerifiedSnapshot<S>> {
+impl<K: Clone + Ord + PortableHash, V: Clone + PortableHash> Transaction<VerifiedSnapshot<K, V>> {
     #[inline]
-    pub fn from_verified_snapshot_owned(snapshot: VerifiedSnapshot<S>) -> Self {
+    pub fn from_verified_snapshot_owned(snapshot: VerifiedSnapshot<K, V>) -> Self {
         let root = snapshot.root_node_ref();
         Self {
             current_root: root,

@@ -34,7 +34,7 @@ fn snapshot_round_trip_small() {
     let (old_root, snapshot, new_root, _db) = build_and_snapshot(50, &touch);
 
     let verified =
-        VerifiedSnapshot::verify_snapshot(&snapshot, &mut DigestHasher::<Sha256>::default())
+        VerifiedSnapshot::verify_snapshot(snapshot, &mut DigestHasher::<Sha256>::default())
             .unwrap();
     assert_eq!(old_root, verified.root_hash());
 
@@ -54,7 +54,7 @@ fn snapshot_round_trip_medium() {
     let (old_root, snapshot, new_root, _db) = build_and_snapshot(500, &touch);
 
     let verified =
-        VerifiedSnapshot::verify_snapshot(&snapshot, &mut DigestHasher::<Sha256>::default())
+        VerifiedSnapshot::verify_snapshot(snapshot, &mut DigestHasher::<Sha256>::default())
             .unwrap();
     assert_eq!(old_root, verified.root_hash());
 
@@ -76,12 +76,9 @@ fn snapshot_size_bounded_by_touched_nodes() {
     // The snapshot should contain far fewer nodes than the full tree.
     // A tree with 1000 keys at order 10 has ~100 leaf nodes + ~10 inner nodes.
     // Touching 10 keys should only visit a small fraction.
-    let snap = &snapshot;
     let total_visited = {
-        // Access through serde or some other means; since Snapshot fields are private,
-        // we verify indirectly via verify_snapshot which validates structure.
         let verified =
-            VerifiedSnapshot::verify_snapshot(snap, &mut DigestHasher::<Sha256>::default())
+            VerifiedSnapshot::verify_snapshot(snapshot, &mut DigestHasher::<Sha256>::default())
                 .unwrap();
         // If the snapshot were the full tree, verify would still succeed.
         // We just confirm it works, which means the snapshot is well-formed.
@@ -99,7 +96,7 @@ fn empty_tree_round_trip() {
     let snapshot = txn.build_initial_snapshot();
 
     let verified =
-        VerifiedSnapshot::verify_snapshot(&snapshot, &mut DigestHasher::<Sha256>::default())
+        VerifiedSnapshot::verify_snapshot(snapshot, &mut DigestHasher::<Sha256>::default())
             .unwrap();
     assert_eq!(verified.root_hash(), empty_root);
 }

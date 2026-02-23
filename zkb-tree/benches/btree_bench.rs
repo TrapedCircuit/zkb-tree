@@ -132,15 +132,19 @@ fn bench_verify_snapshot(c: &mut Criterion) {
         let touch_count = size / 10;
         let (_old_root, snapshot, _new_root) = build_tree_and_snapshot(size, touch_count);
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, _| {
-            b.iter(|| {
-                black_box(
-                    VerifiedSnapshot::verify_snapshot(
-                        black_box(&snapshot),
-                        &mut DigestHasher::<Sha256>::default(),
-                    )
-                    .unwrap(),
-                );
-            });
+            b.iter_batched(
+                || snapshot.clone(),
+                |snap| {
+                    black_box(
+                        VerifiedSnapshot::verify_snapshot(
+                            black_box(snap),
+                            &mut DigestHasher::<Sha256>::default(),
+                        )
+                        .unwrap(),
+                    );
+                },
+                criterion::BatchSize::SmallInput,
+            );
         });
     }
     group.finish();
@@ -166,7 +170,7 @@ fn bench_end_to_end(c: &mut Criterion) {
                 let snapshot = txn.build_initial_snapshot();
 
                 let verified = VerifiedSnapshot::verify_snapshot(
-                    &snapshot,
+                    snapshot,
                     &mut DigestHasher::<Sha256>::default(),
                 )
                 .unwrap();
